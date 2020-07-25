@@ -94,6 +94,8 @@ class DeepFM(BaseEstimator, TransformerMixin):
 
             self.weights = self._initialize_weights()
 
+            self.pred = tf.placeholder(tf.float32, shape=[None, 1], name="pred")  # None * 1
+
             with tf.name_scope("embedding_lookup"):
                 # model
                 self.embeddings = tf.nn.embedding_lookup(self.weights["feature_embeddings"],
@@ -157,6 +159,9 @@ class DeepFM(BaseEstimator, TransformerMixin):
                 else:
                     self.accuracy = tf.reduce_mean(tf.subtract(self.label, self.out))
 
+            with tf.name_scope("accuracy"):
+                    self.auc = tf.metrics.auc(self.label, self.pred)
+
             with tf.name_scope("loss"):
                 # loss
                 if self.loss_type == "logloss":
@@ -201,6 +206,7 @@ class DeepFM(BaseEstimator, TransformerMixin):
             init = tf.global_variables_initializer()
             self.sess = self._init_session()
             self.sess.run(init)
+            self.sess.run(tf.local_variables_initializer())
 
             # number of params
             total_parameters = 0
@@ -391,6 +397,12 @@ class DeepFM(BaseEstimator, TransformerMixin):
         with tf.Session(graph=self.graph) as sess:
             #self.saver.restore(sess, path+'-'+str(387))
             self.saver.restore(sess, path)
+
+    def aucScore(self, l, p):
+        feed_dict = {self.label: [[l_] for l_ in l],
+                     self.pred: [[p_] for p_ in p]}
+        auc_value = self.sess.run(self.auc, feed_dict=feed_dict)
+        print("auc_score", auc_value[1])
 
     def predict(self, Xi, Xv):
         """

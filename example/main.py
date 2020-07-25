@@ -139,7 +139,9 @@ def _predict(dfTrain, dfTest, dfm_params):
     dfm = DeepFM(**dfm_params)
     dfm.restore(dfm.checkpoint_prefix)
     y_pred = dfm.predict(Xi_train, Xv_train)
-    print("auc-->"+str(roc_auc_score(y_train,y_pred)))
+    #print("auc-->"+str(roc_auc_score(y_train,y_pred)))
+    dfm.aucScore(y_train,y_pred)
+
 
 if __name__ == "__main__":
 
@@ -174,7 +176,6 @@ if __name__ == "__main__":
         "model_dir": config.SUB_DIR,
         "checkpoint_every": config.CHECKPOINT_EVERY
     }
-
 
     #_run_base_model_dfm(dfTrain, dfTest,folds,dfm_params)
     _predict(dfTrain, dfTest, dfm_params)
