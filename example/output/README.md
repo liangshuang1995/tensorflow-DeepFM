@@ -1,2 +1,0 @@
-
-Submissions are saved here.
