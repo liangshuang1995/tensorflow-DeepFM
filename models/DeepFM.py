@@ -304,7 +304,7 @@ class DeepFM(BaseEstimator, TransformerMixin):
         )
 
         time_str = datetime.datetime.now().isoformat()
-        print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, acc))
+        #print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, acc))
         return step, loss, acc
 
     def fit(self, Xi_train, Xv_train, y_train,
@@ -334,9 +334,9 @@ class DeepFM(BaseEstimator, TransformerMixin):
                 Xi_batch, Xv_batch, y_batch = self.get_batch(Xi_train, Xv_train, y_train, self.batch_size, i)
                 step, loss, acc = self.fit_on_batch(Xi_batch, Xv_batch, y_batch)
 
-                if step % self.checkpoint_every == 0 or epoch == (self.epoch - 1):
+                #if step % self.checkpoint_every == 0 or epoch == (self.epoch - 1):
                     #self.saver.save(self.sess, self.checkpoint_prefix, global_step=step)
-                    print("echo")
+                    #print("echo")
 
             # evaluate training and validation datasets
             train_result = self.evaluate(Xi_train, Xv_train, y_train)

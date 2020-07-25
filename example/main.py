@@ -86,7 +86,10 @@ def _run_base_model_dfm(dfTrain, dfTest, folds, dfm_params):
 
         dfm = DeepFM(**dfm_params)
         dfm.fit(Xi_train_, Xv_train_, y_train_, Xi_valid_, Xv_valid_, y_valid_)
-        y_train_meta[valid_idx, 0] = dfm.predict(Xi_valid_, Xv_valid_)
+
+        y_pred = dfm.predict(Xi_valid_, Xv_valid_)
+        y_train_meta[valid_idx, 0] = y_pred
+        dfm.aucScore(y_valid_, y_pred)
 
         eval_metric_results_cv[i] = eval_metric(y_valid_, y_train_meta[valid_idx])
         eval_metric_results_epoch_train[i] = dfm.train_result
@@ -140,7 +143,7 @@ def _predict(dfTrain, dfTest, dfm_params):
     dfm.restore(dfm.checkpoint_prefix)
     y_pred = dfm.predict(Xi_train, Xv_train)
     #print("auc-->"+str(roc_auc_score(y_train,y_pred)))
-    dfm.aucScore(y_train,y_pred)
+    #dfm.aucScore(y_train,y_pred)
 
 
 if __name__ == "__main__":
@@ -177,5 +180,5 @@ if __name__ == "__main__":
         "checkpoint_every": config.CHECKPOINT_EVERY
     }
 
-    #_run_base_model_dfm(dfTrain, dfTest,folds,dfm_params)
-    _predict(dfTrain, dfTest, dfm_params)
+    _run_base_model_dfm(dfTrain, dfTest,folds,dfm_params)
+    #_predict(dfTrain, dfTest, dfm_params)
