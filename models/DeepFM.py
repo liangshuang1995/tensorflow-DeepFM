@@ -31,8 +31,8 @@ class DeepFM(BaseEstimator, TransformerMixin):
                  verbose=False, random_seed=2019, num_checkpoints=5,
                  use_fm=True, use_deep=True,
                  loss_type="logloss", eval_metric=roc_auc_score,
-                 l2_reg=0.0, greater_is_better=False,
-                 model_dir=".", checkpoint_every=1):
+                 l2_reg=0.0, greater_is_better=True,
+                 model_dir=".", checkpoint_every=5, trainIndex=0):
         assert (use_fm or use_deep)
         assert loss_type in ["logloss", "mse"], \
             "loss_type can be either 'logloss' for classification task or 'mse' for regression task"
@@ -67,6 +67,9 @@ class DeepFM(BaseEstimator, TransformerMixin):
 
         self.model_dir = model_dir
         self.checkpoint_every = checkpoint_every
+
+        self.trainIndex=trainIndex
+
 
         if use_deep and use_fm:
             self.model_type = "DeepFM"
@@ -159,9 +162,6 @@ class DeepFM(BaseEstimator, TransformerMixin):
                 else:
                     self.accuracy = tf.reduce_mean(tf.subtract(self.label, self.out))
 
-            with tf.name_scope("accuracy"):
-                    self.auc = tf.metrics.auc(self.label, self.pred)
-
             with tf.name_scope("loss"):
                 # loss
                 if self.loss_type == "logloss":
@@ -198,15 +198,26 @@ class DeepFM(BaseEstimator, TransformerMixin):
             self.optimizer = train_op.apply_gradients(self.grads_and_vars, global_step=self.global_step)
 
             # init
-            checkpoint_dir = os.path.abspath(os.path.join(self.model_dir, "checkpoints"))
-            self.checkpoint_prefix = os.path.join(checkpoint_dir, "model")
-            if not os.path.exists(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
-            self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=self.num_checkpoints)
-            init = tf.global_variables_initializer()
-            self.sess = self._init_session()
-            self.sess.run(init)
-            self.sess.run(tf.local_variables_initializer())
+            if self.trainIndex == 0:
+                checkpoint_dir = os.path.abspath(os.path.join(self.model_dir, "checkpoints"+str(0)))
+                self.checkpoint_prefix = os.path.join(checkpoint_dir, "model")
+                if not os.path.exists(checkpoint_dir):
+                    os.makedirs(checkpoint_dir)
+                self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=self.num_checkpoints)
+                init = tf.global_variables_initializer()
+                self.sess = self._init_session()
+                self.sess.run(init)
+                self.sess.run(tf.local_variables_initializer())
+            else:
+                self.sess = self._init_session()
+                checkpoint_dir = os.path.abspath(os.path.join(self.model_dir, "checkpoints"+str(self.trainIndex-1)))
+                inc_checkpoint_dir = os.path.abspath(os.path.join(self.model_dir, "checkpoints"+str(self.trainIndex)))
+                if not os.path.exists(inc_checkpoint_dir):
+                    os.makedirs(inc_checkpoint_dir)
+                self.inc_checkpoint_prefix = os.path.join(inc_checkpoint_dir, "model")
+                self.saver = tf.train.Saver()
+                self.saver.restore(self.sess, os.path.join(checkpoint_dir, "model"))
+
 
             # number of params
             total_parameters = 0
@@ -309,7 +320,7 @@ class DeepFM(BaseEstimator, TransformerMixin):
 
     def fit(self, Xi_train, Xv_train, y_train,
             Xi_valid=None, Xv_valid=None, y_valid=None,
-            early_stopping=False, refit=False):
+            early_stopping=True, refit=True, index = 0):
         """
         :param Xi_train: [[ind1_1, ind1_2, ...], [ind2_1, ind2_2, ...], ..., [indi_1, indi_2, ..., indi_j, ...], ...]
                          indi_j is the feature index of feature field j of sample i in the training set
@@ -346,15 +357,23 @@ class DeepFM(BaseEstimator, TransformerMixin):
                 self.valid_result.append(valid_result)
             if self.verbose > 0 and epoch % self.verbose == 0:
                 if has_valid:
-                    print("| %s | [%d] | train-result=%.4f, valid-result=%.4f | time_gap=[%.1f s]"
+                    print("| %s | [%d] | train-auc=%.4f, valid-auc=%.4f | time_gap=[%.1f s]"
                           % (self.model_type, epoch + 1, train_result, valid_result, time() - t1))
                 else:
-                    print("| %s | [%d] | train-result=%.4f | time_gap=[%.1f s]"
+                    print("| %s | [%d] | train-auc=%.4f | time_gap=[%.1f s]"
                           % (self.model_type, epoch + 1, train_result, time() - t1))
 
             if has_valid and early_stopping and self.training_termination(self.valid_result):
-                #self.saver.save(self.sess, self.checkpoint_prefix)
+                if self.trainIndex != 0:
+                    self.saver.save(self.sess, self.inc_checkpoint_prefix)
+                else:
+                    self.saver.save(self.sess, self.checkpoint_prefix)
                 break
+            else:
+                if self.trainIndex != 0:
+                    self.saver.save(self.sess, self.inc_checkpoint_prefix)
+                else:
+                    self.saver.save(self.sess, self.checkpoint_prefix)
 
         # fit a few more epoch on train+valid until result reaches the best_train_score
         if has_valid and refit:
@@ -379,17 +398,20 @@ class DeepFM(BaseEstimator, TransformerMixin):
                 if abs(train_result - best_train_score) < 0.001 or \
                         (self.greater_is_better and train_result > best_train_score) or \
                         ((not self.greater_is_better) and train_result < best_train_score):
-                    #self.saver.save(self.sess, self.checkpoint_prefix)
+                    if self.trainIndex != 0:
+                        self.saver.save(self.sess, self.inc_checkpoint_prefix)
+                    else:
+                        self.saver.save(self.sess, self.checkpoint_prefix)
                     break
-        self.saver.save(self.sess, self.checkpoint_prefix)
+
 
     def training_termination(self, valid_result):
-        if len(valid_result) > 5:
+        if len(valid_result) > 4:
             if self.greater_is_better:
-                if valid_result[-1] < valid_result[-2] < valid_result[-3] < valid_result[-4] < valid_result[-5]:
+                if valid_result[-1] <= valid_result[-2] <= valid_result[-3] <= valid_result[-4] <= valid_result[-5]:
                     return True
             else:
-                if valid_result[-1] > valid_result[-2] > valid_result[-3] > valid_result[-4] > valid_result[-5]:
+                if valid_result[-1] >= valid_result[-2] >= valid_result[-3] >= valid_result[-4] >= valid_result[-5]:
                     return True
         return False
 
@@ -397,12 +419,6 @@ class DeepFM(BaseEstimator, TransformerMixin):
         with tf.Session(graph=self.graph) as sess:
             #self.saver.restore(sess, path+'-'+str(387))
             self.saver.restore(sess, path)
-
-    def aucScore(self, l, p):
-        feed_dict = {self.label: [[l_] for l_ in l],
-                     self.pred: [[p_] for p_ in p]}
-        auc_value = self.sess.run(self.auc, feed_dict=feed_dict)
-        print("auc_score", auc_value[1])
 
     def predict(self, Xi, Xv):
         """
